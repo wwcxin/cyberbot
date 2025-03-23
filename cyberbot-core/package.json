@@ -1,0 +1,49 @@
+{
+  "name": "cyberbot-core",
+  "version": "1.1.1",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "start": "npx tsx app.ts",
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "prebuild": "npm run clean",
+    "dev": "tsc --watch"
+  },
+  "type": "module",
+  "keywords": [
+    "CyberBot",
+    "cyberbot-core",
+    "node-napcat-ts",
+    "napcatqq",
+    "qqbot",
+    "喵喵",
+    "QQ机器人"
+  ],
+  "author": "星火",
+  "license": "ISC",
+  "description": "CyberBot - 一个基于 node-napcat-ts 的 QQ 机器人",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "dependencies": {
+    "@iarna/toml": "^2.2.5",
+    "axios": "^1.7.8",
+    "cheerio": "^1.0.0",
+    "diskusage-ng": "^1.0.4",
+    "jiti": "^2.4.0",
+    "node-cron": "^3.0.3",
+    "node-napcat-ts": "^0.4.0",
+    "openai": "^4.86.2",
+    "tsx": "^4.19.2",
+    "winston": "^3.17.0",
+    "winston-daily-rotate-file": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/node-cron": "^3.0.11",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.4.2"
+  }
+}
