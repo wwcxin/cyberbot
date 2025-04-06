@@ -1,0 +1,24 @@
+[napcat]
+baseUrl = "ws://localhost:3001"
+accessToken = "123456"
+throwPromise = false
+
+  [napcat.reconnection]
+  enable = true
+  attempts = 10
+  delay = 5_000
+  debug = false
+
+[self]
+bot = 1_364_489_406
+master = [ 2_062_748_014 ]
+admins = [ ]
+
+[plugins]
+system = [ "cmds" ]
+user = [ "demo" ]
+
+[logger]
+level = "info"
+maxSize = "10m"
+maxDays = 7
