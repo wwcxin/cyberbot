@@ -57,6 +57,11 @@ admins = [] # 管理员QQ号列表
 [plugins]
 system = ['cmds'] # 系统插件列表
 user = ['demo'] # 用户插件列表
+
+[logger]
+level = "info" # 日志级别
+maxSize = "10m" # 日志文件最大大小
+maxDays = 7 # 日志文件保存最大天数
 ```
 
 ## 使用方法
