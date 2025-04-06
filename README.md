@@ -29,12 +29,15 @@ CyberBot 是一个基于 node-napcat-ts 开发的高性能 QQ 机器人框架，
 1. 确保你的系统已安装 Node.js (推荐 v16 或更高版本)
 
 2. 下载项目并安装依赖：
+
 ```bash
 npx cyberbot-core
 ```
+
 根据交互步骤进行即可
 
 3. 检查配置文件 `config.toml`：
+
 ```toml
 [napcat]
 baseUrl = "NapcatQQ WebSocket地址"
@@ -65,7 +68,9 @@ npm start
 ```
 
 ### 插件仓库 (下载插件)
+
 `https://github.com/RicardaY/cyberbot-plugin.git`
+
 ### 插件开发
 
 1. 在 `plugins` 目录下创建新的插件目录
