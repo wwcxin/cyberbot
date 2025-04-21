@@ -1,0 +1,29 @@
+{
+  "baseUrl": "ws://localhost:3001",
+  "accessToken": "123456",
+  "throwPromise": false,
+  "reconnection": {
+    "enable": true,
+    "attempts": 10,
+    "delay": 5000,
+    "debug": false
+  },
+  "bot": 123456789,
+  "master": [
+    10000001
+  ],
+  "admins": [],
+  "plugins": {
+    "system": [
+      "cmds"
+    ],
+    "user": [
+      "demo"
+    ]
+  },
+  "logger": {
+    "level": "info",
+    "maxSize": "10m",
+    "maxDays": 7
+  }
+}
