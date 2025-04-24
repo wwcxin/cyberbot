@@ -37,7 +37,7 @@ export function getConfig(): Config {
         }
         
         if (!parsed.accessToken) {
-            throw new Error("配置错误: 缺少 accessToken 字段");
+            parsed.accessToken = "";
         }
         
         // 缓存配置
@@ -145,10 +145,14 @@ export class Bot {
             }
         })
         this.bot.on("meta_event.heartbeat", (ctx) => {
-            log.info(`[*]心跳包♥`)
+            // log.info(`[*]心跳包♥`)
         })
         this.bot.on("message", (ctx) => {
-            log.info("[*]receive message: " + ctx.raw_message)
+            if (ctx.message_type == "group") {
+                log.info(`[*]群(${ctx.group_id}) ${ctx.sender.nickname}(${ctx.sender.user_id}): ${ctx.raw_message}`)
+            } else if (ctx.message_type == "private") {
+                log.info(`[*]私聊(${ctx.sender.user_id}) ${ctx.sender.nickname}: ${ctx.raw_message}`)
+            }
         })
         this.bot.on("api.response.failure", (ctx) => {
             log.error(`[-]ApiError, status: ${ctx.status}, message: ${ctx.message}`)
@@ -480,6 +484,12 @@ interface CyberPluginContext {
      * @return 图片链接
      */
     getImageLink: (e: CyberMessageEvent) => string;
+    /**
+     * 获取消息中提及到的图片URL（消息或被引用消息中的图片）
+     * @param e 原始消息
+     * @return 图片链接
+     */
+    getMentionedImageUrl: (e: CyberMessageEvent) => Promise<string | null>;
     /**
      * 替换 URL 中的 rkey 参数, 获取直链
      * @param url - 原始 URL
@@ -1169,6 +1179,27 @@ export class PluginManager {
                     log.error('提取图片链接时发生错误:', error);
                     return "";
                 }
+            },
+            getMentionedImageUrl: async (e: CyberMessageEvent) => {
+                if (!e || !e.message) return null;
+                try {
+                const reply: any = e.message.find((msg: any) => msg.type === 'reply');
+                if (!reply) return null;
+                const msg = await this.bot.get_msg({ message_id: reply.data.id });
+
+                for (const segment of msg.message) {
+                    if (segment.type === 'image' && segment.data && segment.data.url) {
+                    return segment.data.url;
+                    }
+                }
+                } catch {
+                for (const segment of e.message) {
+                    if (segment.type === 'image' && segment.data && segment.data.url) {
+                    return segment.data.url;
+                    }
+                }
+                }
+                return null;
             },
             getDirectLink: async (url: string) => {
                 try {

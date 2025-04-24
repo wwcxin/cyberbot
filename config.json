@@ -1,6 +1,6 @@
 {
-  "baseUrl": "ws://localhost:3001",
-  "accessToken": "123456",
+  "baseUrl": "ws://192.168.10.102:4001",
+  "accessToken": "",
   "throwPromise": false,
   "reconnection": {
     "enable": true,
@@ -8,9 +8,9 @@
     "delay": 5000,
     "debug": false
   },
-  "bot": 123456789,
+  "bot": 2436783018,
   "master": [
-    10000001
+    2319289456
   ],
   "admins": [],
   "plugins": {
@@ -18,7 +18,10 @@
       "cmds"
     ],
     "user": [
-      "demo"
+      "demo",
+      "浏览器",
+      "抖音解析",
+      "mail"
     ]
   },
   "logger": {
