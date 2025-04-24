@@ -36,8 +36,9 @@ export function getConfig(): Config {
             throw new Error("配置错误: 缺少 baseUrl 字段");
         }
         
+        // 设置 accessToken 默认值为空字符串
         if (!parsed.accessToken) {
-            throw new Error("配置错误: 缺少 accessToken 字段");
+            parsed.accessToken = "";
         }
         
         // 缓存配置
@@ -145,10 +146,14 @@ export class Bot {
             }
         })
         this.bot.on("meta_event.heartbeat", (ctx) => {
-            log.info(`[*]心跳包♥`)
+            // 移除心跳包日志输出
         })
         this.bot.on("message", (ctx) => {
-            log.info("[*]receive message: " + ctx.raw_message)
+            if (ctx.message_type == "group") {
+                log.info(`[*]群(${ctx.group_id}) ${ctx.sender.nickname}(${ctx.sender.user_id}): ${ctx.raw_message}`)
+            } else if (ctx.message_type == "private") {
+                log.info(`[*]私聊(${ctx.sender.user_id}) ${ctx.sender.nickname}: ${ctx.raw_message}`)
+            }
         })
         this.bot.on("api.response.failure", (ctx) => {
             log.error(`[-]ApiError, status: ${ctx.status}, message: ${ctx.message}`)
