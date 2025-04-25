@@ -367,7 +367,7 @@ export default definePlugin({
     description: "基础插件",
     setup: (ctx) => {
         ctx.handle("message", async (e) => {
-            if (!e.raw_message.startsWith("#") || !ctx.hasRight(e.sender.user_id)) return;
+            if (!e.raw_message.startsWith("#") || !ctx.hasRight(e)) return;
             const [cmd, subcmd, ...args] = e.raw_message.slice(1).split(" ");
             const command = commands[cmd];
             if (!command) return;

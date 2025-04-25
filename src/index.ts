@@ -255,33 +255,8 @@ export type ExtendedEvent = {
     kick: (user_id: number, reject_add_request?: boolean) => Promise<void>;
 };
 
-// 定义基础消息事件类型
-export interface BaseMessageEvent {
-    raw_message: string;
-    message_id: number;
-    user_id: number;
-    message_type: 'private' | 'group';
-    sender: {
-        user_id: number;
-    };
-}
-
-// 定义群消息事件类型
-export interface GroupMessageEvent extends BaseMessageEvent {
-    message_type: 'group';
-    group_id: number;
-}
-
-// 定义私聊消息事件类型
-export interface PrivateMessageEvent extends BaseMessageEvent {
-    message_type: 'private';
-}
-
-// 联合类型，用于实际使用
-export type MessageEvent = GroupMessageEvent | PrivateMessageEvent;
-
-// 机器人消息事件类型
-export type CyberMessageEvent = AllHandlers['message'] & ExtendedEvent;
+// 不重复定义MessageEvent类型
+// export type MessageEvent = AllHandlers['message'];
 
 interface CyberPluginContext {
     config: Config;
@@ -300,14 +275,14 @@ interface CyberPluginContext {
      *    ])
      */
     cron: (
-        cronTasks: string | Array<[string, (ctx: CyberPluginContext, e: MessageEvent & ExtendedEvent) => any]>,
+        cronTasks: string | Array<[string, (ctx: CyberPluginContext, e: AllHandlers['message'] & ExtendedEvent) => any]>,
         func?: () => any
     ) => any;
     /** 注册事件处理器 */
     handle: <EventName extends keyof AllHandlers>(
         eventName: EventName,
         handler: EventName extends "message" | "message.group" | "message.private"
-            ? (e: CyberMessageEvent) => any 
+            ? (e: AllHandlers[EventName] & ExtendedEvent) => any 
             : (e: AllHandlers[EventName] & ExtendedEvent) => any
     ) => any;
     /** 是否为主人 */
@@ -336,7 +311,7 @@ interface CyberPluginContext {
      * @param user_id - 用户的ID。
      * @returns 如果用户是管理员或主人，则返回 `true`，否则返回 `false`。
      */
-    hasRight: (user_id: number) => boolean;
+    hasRight: (e: any) => boolean;
     /**
      * 发送私聊消息。
      * 
@@ -430,21 +405,19 @@ interface CyberPluginContext {
     /**
      * 检查用户是否是群组管理员或群主。
      * 
-     * @param group_id - 群ID。
-     * @param user_id - 用户的ID。
+     * @param e - 原始消息
      * @returns 如果用户是群组管理员或群主，则返回 `true`，否则返回 `false`。
      * @throws - 如果获取群组成员信息失败，抛出错误。
      */
-    isGroupAdmin: (group_id: number, user_id: number) => Promise<boolean>;
+    isGroupAdmin: (e: any) => Promise<boolean>;
     /**
      * 检查用户是否是群组群主。
      * 
-     * @param group_id - 群ID。
-     * @param user_id - 用户的ID。
+     * @param e - 原始消息
      * @returns 如果用户是群组群主，则返回 `true`，否则返回 `false`。
      * @throws - 如果获取群组成员信息失败，抛出错误。
      */
-    isGroupOwner: (group_id: number, user_id: number) => Promise<boolean>;
+    isGroupOwner: (e: any) => Promise<boolean>;
     /**
      * MD5 加密
      * @param {string} text 待 MD5 加密数据
@@ -483,13 +456,13 @@ interface CyberPluginContext {
      * @param e 原始消息
      * @return 图片链接
      */
-    getImageLink: (e: CyberMessageEvent) => string;
+    getImageLink: (e: AllHandlers['message']) => string;
     /**
      * 获取消息中提及到的图片URL（消息或被引用消息中的图片）
      * @param e 原始消息
      * @return 图片链接
      */
-    getMentionedImageUrl: (e: CyberMessageEvent) => Promise<string | null>;
+    getMentionedImageUrl: (e: AllHandlers['message']) => Promise<string | null>;
     /**
      * 替换 URL 中的 rkey 参数, 获取直链
      * @param url - 原始 URL
@@ -504,7 +477,7 @@ interface CyberPluginContext {
      * @returns 提取的回复消息ID字符串，如果未找到则返回空字符串。
      * @throws 如果在提取过程中发生错误，记录错误日志并返回空字符串。
      */
-    getReplyMessageId: (e: CyberMessageEvent) => string;
+    getReplyMessageId: (e: AllHandlers['message']) => string;
     /**
      * 从消息内容中提取 @ 消息的 ID。
      * 如果找到 @ 消息ID，则返回该ID；否则，返回空字符串。
@@ -513,7 +486,7 @@ interface CyberPluginContext {
      * @returns 提取的 @ 消息ID字符串，如果未找到则返回空字符串。
      * @throws 如果在提取过程中发生错误，记录错误日志并返回空字符串。
      */
-    getMessageAt: (e: CyberMessageEvent) => number[];
+    getMessageAt: (e: AllHandlers['message']) => number | null;
     /**
      * 从消息内容中提取纯文本内容。
      * 
@@ -521,7 +494,7 @@ interface CyberPluginContext {
      * @returns 提取的纯文本内容字符串。
      * @throws 如果在提取过程中发生错误，记录错误日志并抛出错误。
      */
-    getText: (e: CyberMessageEvent) => string;
+    getText: (e: AllHandlers['message']) => string;
 
     /**
      * 从消息内容中提取被引用的消息内容。
@@ -530,7 +503,7 @@ interface CyberPluginContext {
      * @returns 提取的被回复消息内容字符串。
      * @throws 如果在提取过程中发生错误，记录错误日志并抛出错误。
      */
-    getQuotedText: (e: CyberMessageEvent) => Promise<string>;
+    getQuotedText: (e: AllHandlers['message']) => Promise<string>;
     /**
      * 发送伪造消息。
      * 
@@ -544,6 +517,45 @@ interface CyberPluginContext {
         message_id: number;
         res_id: string;
     }>;
+    /**
+     * 获取群成员信息
+     * @param group_id - 群ID
+     * @param user_id - 用户ID
+     * @param no_cache - 是否不使用缓存
+     * @returns 群成员信息
+     */
+    getGroupMemberInfo: (group_id: number, user_id: number, no_cache: boolean) => Promise<any>
+    /**
+     * 获取被引用的消息详细
+     * @param e - 原始消息
+     * @returns 被引用的消息详细
+     */
+    getQuoteMessage: (e: AllHandlers['message']) => Promise<any>;
+    /**
+     * 设置QQ性别
+     * @param sex - 性别
+     */
+    setSex: (sex: number) => Promise<void>;
+    /**
+     * 退出群组
+     * @param group_id - 群组ID
+     * @param is_dismiss - 是否解散群组
+     */
+    quitGroup: (group_id: number, is_dismiss: boolean) => Promise<void>;
+    /**
+     * 设置群管理员
+     * @param group_id - 群组ID
+     * @param user_id - 用户ID
+     * @param enable - 是否启用
+     */
+    setGroupAdmin: (group_id: number, user_id: number, enable: boolean) => Promise<void>;
+    /**
+     * 设置群名片
+     * @param group_id - 群组ID
+     * @param user_id - 用户ID
+     * @param card - 名片内容
+     */
+    setGroupCard: (group_id: number, user_id: number, card: string) => Promise<void>;
     /** 工具函数 */
     utils: {
         /** 为事件对象添加reply方法 */
@@ -975,7 +987,7 @@ export class PluginManager {
                 }
             },
             handle: <EventName extends keyof AllHandlers>(eventName: EventName, func: EventName extends "message" | "message.group" | "message.private"
-                ? (e: CyberMessageEvent) => any 
+                ? (e: AllHandlers[EventName] & ExtendedEvent) => any 
                 : (e: AllHandlers[EventName] & ExtendedEvent) => any) => {
                 const wrappedFunc = async (e: any) => {
                     try {
@@ -1016,8 +1028,31 @@ export class PluginManager {
                 }
                 return false;
             },
-            hasRight: (user_id: number) => {
-                return this.ctx.isMaster(user_id) || this.ctx.isAdmin(user_id)
+            hasRight: (e) => {
+                // 处理不同类型的输入
+                try {
+                    if (typeof e === 'number') {
+                        // 如果传入的是数字（user_id），直接判断权限
+                        return this.ctx.isMaster(e) || this.ctx.isAdmin(e);
+                    }
+                    
+                    if (e && typeof e === 'object') {
+                        if (e.sender && typeof e.sender.user_id === 'number') {
+                            // 如果传入的是有sender属性的事件对象
+                            return this.ctx.isMaster(e.sender.user_id) || this.ctx.isAdmin(e.sender.user_id);
+                        } else if (typeof e.user_id === 'number') {
+                            // 如果传入对象有user_id属性
+                            return this.ctx.isMaster(e.user_id) || this.ctx.isAdmin(e.user_id);
+                        }
+                    }
+                    
+                    // 其它情况，记录错误并返回false
+                    log.error(`hasRight: 无效的参数类型: ${typeof e}, 值: ${JSON.stringify(e)}`);
+                    return false;
+                } catch (error) {
+                    log.error(`hasRight检查失败: ${error}`);
+                    return false;
+                }
             },
 
             sendPrivateMessage: async (user_id:number, message: string | number | Array<any>,):Promise<{message_id: number;}> => {
@@ -1134,21 +1169,49 @@ export class PluginManager {
                     log.error(`Failed to reject group request: ${error}`);
                 }
             },
-            isGroupAdmin: async (group_id: number, user_id: number): Promise<boolean> => {
-                try{
-                    const memberInfo = await this.bot.get_group_member_info({ group_id, user_id });
-                    return memberInfo.role === 'admin' || memberInfo.role === 'owner';
-                }catch(error){
-                    log.error(`Failed to check if user ${user_id} is an admin in group ${group_id}: ${error}`); 
+            isGroupAdmin: async (e: any): Promise<boolean> => {
+                try {
+                    // 确保有有效的group_id和能获取到bot id
+                    if (!e || !e.group_id) {
+                        log.error("isGroupAdmin: 无效的参数，缺少group_id");
+                        return false;
+                    }
+                    
+                    const botInfo = await this.bot.get_login_info();
+                    if (!botInfo || !botInfo.user_id) {
+                        log.error("isGroupAdmin: 无法获取机器人信息");
+                        return false;
+                    }
+                    
+                    const result = await this.bot.get_group_member_info({
+                        group_id: e.group_id,
+                        user_id: botInfo.user_id,
+                        no_cache: false
+                    });
+                    
+                    return result.role === 'admin' || result.role === 'owner';
+                } catch (error) {
+                    log.error(`isGroupAdmin检查失败: ${error}`);
                     return false;
                 }
             },
-            isGroupOwner: async (group_id: number, user_id: number): Promise<boolean> => {
-                try{
-                    const memberInfo = await this.bot.get_group_member_info({ group_id, user_id });
+            isGroupOwner: async (e: any): Promise<boolean> => {
+                try {
+                    // 确保参数有效
+                    if (!e || !e.group_id || !e.sender || !e.sender.user_id) {
+                        log.error("isGroupOwner: 无效的参数，缺少必要信息");
+                        return false;
+                    }
+                    
+                    const memberInfo = await this.bot.get_group_member_info({ 
+                        group_id: e.group_id, 
+                        user_id: e.sender.user_id,
+                        no_cache: false
+                    });
+                    
                     return memberInfo.role === 'owner';
-                }catch(error){
-                    log.error(`Failed to check if user ${user_id} is an owner in group ${group_id}: ${error}`);
+                } catch (error) {
+                    log.error(`Failed to check if user ${e?.sender?.user_id} is an owner in group ${e?.group_id}: ${error}`);
                     return false;
                 }
             },
@@ -1169,7 +1232,7 @@ export class PluginManager {
             getQQAvatarLink: (user_id: number, size?: number) => {
                 return `https://q2.qlogo.cn/headimg_dl?dst_uin=${user_id}&spec=${size || 40}`;
             },
-            getImageLink: (e: CyberMessageEvent) => {
+            getImageLink: (e: AllHandlers['message']) => {
                 try {
                     if (!Array.isArray(e.message)) return "";
                     
@@ -1180,7 +1243,7 @@ export class PluginManager {
                     return "";
                 }
             },
-            getMentionedImageUrl: async (e: CyberMessageEvent) => {
+            getMentionedImageUrl: async (e: AllHandlers['message']) => {
                 if (!e || !e.message) return null;
                 try {
                 const reply: any = e.message.find((msg: any) => msg.type === 'reply');
@@ -1235,7 +1298,7 @@ export class PluginManager {
                   }
             },
             
-            getReplyMessageId: (e: CyberMessageEvent) => {
+            getReplyMessageId: (e: AllHandlers['message']) => {
                 try {
                     if (!Array.isArray(e.message)) return "";
                     const replyObj = e.message.find(item => item.type === "reply");
@@ -1245,19 +1308,27 @@ export class PluginManager {
                     return "";
                   }
             },
-            getMessageAt: (e: CyberMessageEvent): number[] => {
+            getMessageAt: (e: AllHandlers['message']): number | null => {
                 try {
-                    if (!Array.isArray(e.message)) return [];
-                    return e.message
-                        .filter(item => item.type === "at") // 筛选所有 type 为 "at" 的项
-                        .map(item => Number(item.data?.qq))        // 提取 qq 字段
-                        .filter(qq => !isNaN(qq));    // 过滤掉 undefined
+                    if (!Array.isArray(e.message)) return null;
+                    
+                    // 查找第一个at类型的消息段
+                    const atItem = e.message.find(item => item.type === "at");
+                    if (!atItem || !atItem.data) return null;
+                    
+                    // 使用类型断言来避免TypeScript错误
+                    const qqStr = (atItem.data as { qq?: string }).qq;
+                    if (!qqStr) return null;
+                    
+                    // 转换为数字并返回
+                    const qq = Number(qqStr);
+                    return isNaN(qq) ? null : qq;
                 } catch (error) {
-                    log.error('提取消息ID时发生错误:', error);
-                    return [];
+                    log.error('提取艾特的QQ号时发生错误:', error);
+                    return null;
                 }
             },
-            getText: (e: CyberMessageEvent) => {
+            getText: (e: AllHandlers['message']) => {
                 try {
                     if (!Array.isArray(e.message)) return "";
                     const textObj = e.message.find(item => item.type === "text");
@@ -1267,7 +1338,7 @@ export class PluginManager {
                     return "";
                 }
             },
-            getQuotedText: async (e: CyberMessageEvent): Promise<string> => {
+            getQuotedText: async (e: AllHandlers['message']): Promise<string> => {
                 try {
                     const message_id = this.ctx.getReplyMessageId(e);
                     if (!message_id) return ""; // 提前返回无效情况
@@ -1307,6 +1378,70 @@ export class PluginManager {
                     log.error(`Failed to send fake message to target ${target_id}: ${error}`);
                     throw error;
                 }
+            },
+
+            // 新增: 获取群成员信息
+            getGroupMemberInfo: async (group_id: number, user_id: number, no_cache: boolean = false) => {
+                const result = await this.bot.get_group_member_info({
+                group_id: group_id,
+                user_id: user_id,
+                no_cache: no_cache
+                });
+                return result;
+            },
+
+            // 新增：获取被引用的消息详细
+            getQuoteMessage: async (e: AllHandlers['message']) => {
+                if (!e || !e.message) return null;
+                try {
+                    const reply = e.message.find((msg: any) => msg.type === 'reply');
+                    if (!reply || !reply.data) return null;
+                    
+                    // 使用类型断言确保TypeScript知道reply.data有id属性
+                    const replyId = (reply.data as { id: string }).id;
+                    if (!replyId) return null;
+                    
+                    const msg = await this.bot.get_msg({ message_id: Number(replyId) });
+                    return msg;
+                } catch (error) {
+                    return null;
+                }
+            },
+
+            // 新增: 设置QQ性别
+            setSex: async (sex: number) => {
+                const botInfo = await this.bot.get_login_info();
+
+                await this.bot.set_qq_profile({
+                nickname: botInfo.nickname,
+                sex: sex
+                });
+            },
+
+            // 新增: 退出群组
+            quitGroup: async (group_id: number, is_dismiss: boolean = false) => {
+                await this.bot.set_group_leave({
+                group_id: group_id,
+                is_dismiss: is_dismiss
+                });
+            },
+
+            // 新增: 设置群管理员
+            setGroupAdmin: async (group_id: number, user_id: number, enable: boolean = true) => {
+                await this.bot.set_group_admin({
+                group_id: group_id,
+                user_id: user_id,
+                enable: enable
+                });
+            },
+
+            // 新增: 设置群名片
+            setGroupCard: async (group_id: number, user_id: number, card: string) => {
+                await this.bot.set_group_card({
+                group_id: group_id,
+                user_id: user_id,
+                card: card
+                });
             },
             
             /** 工具函数 */
