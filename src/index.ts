@@ -158,7 +158,7 @@ export class Bot {
             log.error(`[-]ApiError, status: ${ctx.status}, message: ${ctx.message}`)
         })
         this.bot.on("api.preSend", (ctx) => {
-            log.info(`[*]${ctx.action}: ${JSON.stringify(ctx.params)}`)
+            // log.info(`[*]${ctx.action}: ${JSON.stringify(ctx.params)}`)
         })
         this.plugins = await this.pluginManager.init()
         await this.bot.connect()
