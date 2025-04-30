@@ -556,6 +556,12 @@ interface CyberPluginContext {
      * @param card - 名片内容
      */
     setGroupCard: (group_id: number, user_id: number, card: string) => Promise<void>;
+    /**
+     * 判断是否艾特bot
+     * @param e - 事件对象
+     * @returns 是否艾特bot
+     */
+    isAtBot: (e: AllHandlers['message']) => Promise<boolean>;
     /** 工具函数 */
     utils: {
         /** 为事件对象添加reply方法 */
@@ -1443,7 +1449,17 @@ export class PluginManager {
                 card: card
                 });
             },
-            
+
+            // 新增：判断是否艾特bot
+            isAtBot: async (e: AllHandlers['message']) => {
+                if (!e || !e.message) return false;
+                const atItem = e.message.find(item => item.type === "at");
+                if (!atItem || !atItem.data) return false;
+                const qqStr = (atItem.data as { qq?: string }).qq;
+                const botInfo = await this.bot.get_login_info();
+                return qqStr === botInfo.user_id.toString();
+            },
+
             /** 工具函数 */
             utils: {
                 addReplyMethod: <T extends any>(e: T): T & ExtendedEvent => {

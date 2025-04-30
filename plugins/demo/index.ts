@@ -10,7 +10,7 @@ export default definePlugin({
       // 收到 hello 消息时回复 world
       if (e.raw_message === 'hello') {
         
-        // 第三个参数表示是否回复愿消息
+        // 第二个参数表示是否引用回复愿消息
         const { message_id } = await e.reply('world', true)
         //5s撤回
         setTimeout(() => {
