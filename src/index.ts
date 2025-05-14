@@ -1728,6 +1728,7 @@ export class PluginManager {
                     const messageId = (e as any).message_id;
                     const userId = (e as any).user_id;
                     const groupId = (e as any).group_id;
+                    const sender = (e as any).sender;
                     
                     // 添加reply方法，尽量减少引用
                     (e as any).reply = async (message: string | number | any[] | any, quote: boolean = false) => {
@@ -1762,6 +1763,24 @@ export class PluginManager {
                                 ...sendParams,
                                 message: processedMessages
                             });
+
+                            // 添加发送消息的日志记录
+                            const messageContent = messageArray.map(item => {
+                                if (typeof item === 'string') return item;
+                                if (typeof item === 'number') return item.toString();
+                                if (item.type === 'text') return item.data.text;
+                                if (item.type === 'image') return '[图片]';
+                                if (item.type === 'reply') return '[回复]';
+                                if (item.type === 'at') return `[@${item.data.qq}]`;
+                                return `[${item.type}]`;
+                            }).join('');
+
+                            if (messageType === 'group') {
+                                log.info(`[*]群(${groupId}) Bot回复: ${messageContent}`);
+                            } else {
+                                log.info(`[*]私聊(${userId}) Bot回复: ${messageContent}`);
+                            }
+
                             return { message_id: response.message_id };
                         } catch (error) {
                             log.error(`Failed to send message: ${error}`);
