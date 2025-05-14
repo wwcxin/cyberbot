@@ -1587,10 +1587,11 @@ export class PluginManager {
                 try {
                     if (!Array.isArray(e.message)) return "";
                     
-                    // 检查消息是否包含图片
-                    const hasImage = e.message.some(item => item.type === "image");
-                    if (hasImage) {
-                        return "[图片]"; // 如果消息包含图片，返回特殊标记
+                    // 检查消息是否包含文本类型
+                    const hasText = e.message.some(item => item.type === "text");
+                    if (!hasText) {
+                        // 如果消息不包含文本类型，直接返回空字符串
+                        return "";
                     }
                     
                     // 处理文本消息
@@ -1772,6 +1773,14 @@ export class PluginManager {
                                 if (item.type === 'image') return '[图片]';
                                 if (item.type === 'reply') return '[回复]';
                                 if (item.type === 'at') return `[@${item.data.qq}]`;
+                                if (item.type === 'video') return '[视频]';
+                                if (item.type === 'audio') return '[音频]';
+                                if (item.type === 'file') return '[文件]';
+                                if (item.type === 'location') return '[位置]';
+                                if (item.type === 'music') return '[音乐]';
+                                if (item.type === 'share') return '[分享]';
+                                if (item.type === 'forward') return '[转发]';
+                                
                                 return `[${item.type}]`;
                             }).join('');
 
