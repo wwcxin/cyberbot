@@ -1587,16 +1587,14 @@ export class PluginManager {
                 try {
                     if (!Array.isArray(e.message)) return "";
                     
-                    // 检查消息是否包含文本类型
-                    const hasText = e.message.some(item => item.type === "text");
-                    if (!hasText) {
-                        // 如果消息不包含文本类型，直接返回空字符串
-                        return "";
-                    }
+                    // 收集所有文本段并拼接
+                    const textSegments = e.message
+                        .filter(item => item.type === "text")
+                        .map(item => item.data?.text || "")
+                        .join("")
+                        .trim();
                     
-                    // 处理文本消息
-                    const textObj = e.message.find(item => item.type === "text");
-                    return textObj?.data?.text.trim() || "";
+                    return textSegments;
                 } catch (error) {
                     log.error('提取纯文本内容时发生错误:', error);
                     return "";
