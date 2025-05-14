@@ -176,7 +176,11 @@ class MessageHandler {
         if (baseConfig.BOT.blockedGroups.includes(e.group_id)) return;
         
         const messageText = this.ctx.getText(e);
-        if (!messageText) {
+        // 检查消息是否包含图片或文本
+        const hasImage = e.message.some(item => item.type === "image");
+        const hasText = messageText && messageText !== "[图片]";
+        
+        if (!hasImage && !hasText) {
             console.error('无效消息:', { groupId: e.group_id, messageId: e.message_id });
             return;
         }
@@ -184,7 +188,7 @@ class MessageHandler {
         if (!messageText.startsWith(baseConfig.BOT.triggerWord) && !(await this.ctx.isAtBot(e))) return;
 
         const textMsg = messageText.replace(baseConfig.BOT.triggerWord, '').trim();
-        if (!textMsg) {
+        if (!textMsg && !hasImage) {
             await e.reply('？你想说什么');
             return;
         }
