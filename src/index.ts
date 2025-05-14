@@ -100,6 +100,14 @@ export class Bot {
     private config: Config;
     private pluginManager: PluginManager;
     private plugins: {} | null;
+    private lastHeartbeatTime: number = 0;
+    private heartbeatTimeout: NodeJS.Timeout | null = null;
+    private readonly HEARTBEAT_TIMEOUT = 30000; // 30秒无心跳则判定为断开
+    private readonly HEARTBEAT_CHECK_INTERVAL = 10000; // 每10秒检查一次心跳状态
+    private errorCount: number = 0;
+    private readonly MAX_ERRORS_BEFORE_RECONNECT = 5;
+    private readonly ERROR_RESET_INTERVAL = 60000; // 1分钟重置错误计数
+    
 
     constructor() {
         // 获取配置，如果失败则抛出错误
@@ -126,50 +134,151 @@ export class Bot {
         
         // 初始化错误处理器
         ErrorHandler.initialize();
+        
+        // 初始化心跳检查
+        this.initHeartbeatCheck();
+        
+        // 初始化错误计数重置定时器
+        setInterval(() => {
+            this.errorCount = 0;
+        }, this.ERROR_RESET_INTERVAL);
+    }
+
+    private initHeartbeatCheck() {
+        // 定期检查心跳状态
+        this.heartbeatTimeout = setInterval(() => {
+            const now = Date.now();
+            if (this.lastHeartbeatTime && (now - this.lastHeartbeatTime > this.HEARTBEAT_TIMEOUT)) {
+                log.error("[-]心跳超时，尝试重新连接...");
+                this.reconnect();
+            }
+        }, this.HEARTBEAT_CHECK_INTERVAL);
+    }
+
+    private async reconnect() {
+        try {
+            log.info("[*]开始重新连接...");
+            
+            // 断开现有连接
+            await this.bot.disconnect();
+            
+            // 重新创建连接
+            this.bot = new NCWebsocket({
+                "baseUrl": this.config.baseUrl,
+                "accessToken": this.config.accessToken,
+                "reconnection": {
+                    "enable": this.config.reconnection?.enable ?? true,
+                    "attempts": this.config.reconnection?.attempts ?? 10,
+                    "delay": this.config.reconnection?.delay ?? 5000
+                }
+            }, this.config.reconnection?.debug ?? false);
+            
+            // 重新注册事件处理器
+            this.registerEventHandlers();
+            
+            // 重新连接
+            await this.bot.connect();
+            
+            // 重置错误计数
+            this.errorCount = 0;
+            
+            log.info("[+]重新连接成功");
+        } catch (error) {
+            this.handleError(error, "重新连接");
+            // 如果重连失败，继续尝试
+            setTimeout(() => this.reconnect(), 5000);
+        }
+    }
+
+    private handleError(error: any, context: string) {
+        this.errorCount++;
+        log.error(`[-]${context}错误: ${error}`);
+        
+        // 如果错误次数过多，尝试重新连接
+        if (this.errorCount >= this.MAX_ERRORS_BEFORE_RECONNECT) {
+            log.error(`[-]错误次数过多(${this.errorCount})，尝试重新连接...`);
+            this.errorCount = 0;
+            this.reconnect();
+        }
+    }
+
+    private registerEventHandlers() {
+        // 基础连接事件
+        this.bot.on("socket.open", (ctx) => {
+            log.info("[*]开始连接: " + this.config.baseUrl);
+            this.lastHeartbeatTime = Date.now();
+        });
+
+        this.bot.on("socket.error", (ctx) => {
+            this.handleError(ctx.error_type, "WebSocket连接");
+            this.lastHeartbeatTime = 0;
+        });
+
+        this.bot.on("socket.close", (ctx) => {
+            this.handleError(`连接关闭，代码: ${ctx.code}`, "WebSocket");
+            this.lastHeartbeatTime = 0;
+        });
+
+        // 生命周期事件
+        this.bot.on("meta_event.lifecycle", (ctx) => {
+            try {
+                if (ctx.sub_type == "connect") {
+                    log.info(`[+]连接成功: ${this.config.baseUrl}`);
+                    log.info(logo);
+                    this.lastHeartbeatTime = Date.now();
+                }
+            } catch (error) {
+                this.handleError(error, "生命周期事件");
+            }
+        });
+
+        // 心跳事件
+        this.bot.on("meta_event.heartbeat", (ctx) => {
+            try {
+                this.lastHeartbeatTime = Date.now();
+                log.info(`[*]心跳包♥ (${new Date().toLocaleTimeString()})`);
+                
+                // 定期检查连接状态
+                this.bot.get_login_info().catch(error => {
+                    this.handleError(error, "心跳检查");
+                    this.reconnect();
+                });
+            } catch (error) {
+                this.handleError(error, "心跳事件");
+            }
+        });
+
+        // 消息事件
+        this.bot.on("message", (ctx) => {
+            try {
+                if (ctx.message_type == "group") {
+                    log.info(`[*]群(${ctx.group_id}) ${ctx.sender.nickname}(${ctx.sender.user_id}): ${ctx.raw_message}`);
+                } else if (ctx.message_type == "private") {
+                    log.info(`[*]私聊(${ctx.sender.user_id}) ${ctx.sender.nickname}: ${ctx.raw_message}`);
+                }
+            } catch (error) {
+                this.handleError(error, "消息处理");
+            }
+        });
+
+        // API 错误事件
+        this.bot.on("api.response.failure", (ctx) => {
+            this.handleError(`状态: ${ctx.status}, 消息: ${ctx.message}`, "API调用");
+        });
     }
 
     async start() {
-        this.bot.on("socket.open", (ctx) => {
-            log.info("[*]开始连接: " + this.config.baseUrl)
-        })
-        this.bot.on("socket.error", (ctx) => {
-            log.error("[-]websocket 连接错误: " + ctx.error_type)
-        })
-        this.bot.on("socket.close", (ctx) => {
-            log.error("[-]websocket 连接关闭: " + ctx.code)
-        })
-        this.bot.on("meta_event.lifecycle", (ctx) => {
-            if (ctx.sub_type == "connect") {
-                log.info(`[+]连接成功: ${this.config.baseUrl}`)
-                log.info(logo)
-            }
-        })
-        this.bot.on("meta_event.heartbeat", (ctx) => {
-            // log.info(`[*]心跳包♥`)
-        })
-        this.bot.on("message", (ctx) => {
-            if (ctx.message_type == "group") {
-                log.info(`[*]群(${ctx.group_id}) ${ctx.sender.nickname}(${ctx.sender.user_id}): ${ctx.raw_message}`)
-            } else if (ctx.message_type == "private") {
-                log.info(`[*]私聊(${ctx.sender.user_id}) ${ctx.sender.nickname}: ${ctx.raw_message}`)
-            }
-        })
-        this.bot.on("api.response.failure", (ctx) => {
-            log.error(`[-]ApiError, status: ${ctx.status}, message: ${ctx.message}`)
-        })
-        this.bot.on("api.preSend", (ctx) => {
-            // log.info(`[*]${ctx.action}: ${JSON.stringify(ctx.params)}`)
-        })
-        this.plugins = await this.pluginManager.init()
-        await this.bot.connect()
+        // 注册事件处理器
+        this.registerEventHandlers();
         
-        // 在连接成功并加载插件后向主人发送上线通知
+        // 初始化插件
+        this.plugins = await this.pluginManager.init();
+        
+        // 连接服务器
+        await this.bot.connect();
+        
+        // 发送上线通知
         this.sendOnlineNotificationToMasters();
-
-        // 设置错误日志内存优化模式
-        // 如果配置中有debug标志，则不启用内存优化
-        const debugMode = this.config.reconnection?.debug ?? false;
-        ErrorHandler.setMemoryOptimizedMode(!debugMode);
     }
     
     /**
@@ -211,7 +320,18 @@ export class Bot {
 
     // 添加停止方法，在系统关闭时调用
     async stop() {
-        // 在这里可以添加其他清理逻辑
+        // 清理心跳检查定时器
+        if (this.heartbeatTimeout) {
+            clearInterval(this.heartbeatTimeout);
+            this.heartbeatTimeout = null;
+        }
+        
+        // 断开连接
+        try {
+            await this.bot.disconnect();
+        } catch (error) {
+            log.error(`[-]断开连接时发生错误: ${error}`);
+        }
         
         log.info('[*]系统已停止，资源已清理');
     }
@@ -231,7 +351,8 @@ interface PluginInfo {
         enable: boolean,
         listeners: Array<listener>;
         cron: Array<any>;
-    }
+    },
+    lastUsed?: number; // 添加最后使用时间字段
 }
 
 interface listener {
@@ -851,7 +972,13 @@ export class PluginManager {
     private tempCronJob: Array<any>;
     private jiti: any;
     private cronTaskPool: Map<string, Array<any>> = new Map();
-
+    
+    // 添加内存监控相关属性
+    private static readonly MEMORY_CHECK_INTERVAL = 5 * 60 * 1000; // 5分钟检查一次
+    private static readonly MEMORY_WARNING_THRESHOLD = 0.8; // 80%内存使用率警告
+    private static readonly MEMORY_CRITICAL_THRESHOLD = 0.9; // 90%内存使用率危险
+    private memoryCheckInterval: NodeJS.Timeout | null = null;
+    
     constructor(bot: NCWebsocket, config: Config) {
         this.plugins = new Map<string, PluginInfo>();
         this.bot = bot;
@@ -2277,6 +2404,160 @@ export class PluginManager {
             log.debug(`[*]内存优化：完全释放插件 ${pluginName} 的资源`);
         } catch (error) {
             log.error(`释放插件 ${pluginName} 资源时出错:`, error);
+        }
+    }
+    
+    /**
+     * 启动内存监控
+     */
+    private startMemoryMonitoring(): void {
+        if (this.memoryCheckInterval) {
+            clearInterval(this.memoryCheckInterval);
+        }
+        
+        this.memoryCheckInterval = setInterval(() => {
+            this.checkMemoryUsage();
+        }, PluginManager.MEMORY_CHECK_INTERVAL);
+        
+        // 确保在实例销毁时清理定时器
+        process.on('exit', () => {
+            if (this.memoryCheckInterval) {
+                clearInterval(this.memoryCheckInterval);
+            }
+        });
+    }
+    
+    /**
+     * 检查内存使用情况
+     */
+    private checkMemoryUsage(): void {
+        try {
+            const memoryUsage = process.memoryUsage();
+            const heapUsed = memoryUsage.heapUsed / memoryUsage.heapTotal;
+            
+            // 记录内存使用情况
+            log.debug(`[*]内存使用情况: ${Math.round(heapUsed * 100)}% (${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB)`);
+            
+            // 根据内存使用率采取不同措施
+            if (heapUsed >= PluginManager.MEMORY_CRITICAL_THRESHOLD) {
+                log.warn(`[!]内存使用率过高(${Math.round(heapUsed * 100)}%)，执行紧急清理...`);
+                this.emergencyMemoryCleanup();
+            } else if (heapUsed >= PluginManager.MEMORY_WARNING_THRESHOLD) {
+                log.warn(`[!]内存使用率较高(${Math.round(heapUsed * 100)}%)，建议检查内存泄漏`);
+                this.normalMemoryCleanup();
+            }
+        } catch (error) {
+            log.error(`[-]内存检查失败: ${error}`);
+        }
+    }
+    
+    /**
+     * 常规内存清理
+     */
+    private normalMemoryCleanup(): void {
+        try {
+            // 清理过期的插件上下文代理
+            this.cleanupPluginContexts();
+            
+            // 清理错误日志
+            ErrorHandler.cleanOldLogs();
+            
+            // 清理未使用的定时任务
+            this.cleanupUnusedCronTasks();
+            
+            // 建议启用内存优化模式
+            ErrorHandler.setMemoryOptimizedMode(true);
+            
+            log.info('[*]已完成常规内存清理');
+        } catch (error) {
+            log.error(`[-]常规内存清理失败: ${error}`);
+        }
+    }
+    
+    /**
+     * 紧急内存清理
+     */
+    private emergencyMemoryCleanup(): void {
+        try {
+            // 执行更激进的内存清理
+            this.normalMemoryCleanup();
+            
+            // 清理所有插件上下文代理
+            this.pluginCtxProxies.clear();
+            
+            // 清理所有错误处理函数缓存
+            this.pluginErrorHandlers.clear();
+            
+            // 清理所有定时任务
+            this.cleanupAllCronTasks();
+            
+            // 强制垃圾回收
+            if (global.gc) {
+                global.gc();
+                log.info('[*]已执行强制垃圾回收');
+            }
+            
+            log.warn('[!]已完成紧急内存清理');
+        } catch (error) {
+            log.error(`[-]紧急内存清理失败: ${error}`);
+        }
+    }
+    
+    /**
+     * 清理过期的插件上下文代理
+     */
+    private cleanupPluginContexts(): void {
+        const now = Date.now();
+        for (const [pluginName, proxy] of this.pluginCtxProxies) {
+            const pluginInfo = this.plugins.get(pluginName);
+            // 如果插件不存在或已禁用超过1小时，清理其上下文代理
+            if (!pluginInfo || (!pluginInfo.setup.enable && now - (pluginInfo.lastUsed || 0) > 3600000)) {
+                this.pluginCtxProxies.delete(pluginName);
+                log.debug(`[*]已清理插件 ${pluginName} 的上下文代理`);
+            }
+        }
+    }
+    
+    /**
+     * 清理未使用的定时任务
+     */
+    private cleanupUnusedCronTasks(): void {
+        for (const [pluginName, tasks] of this.cronTaskPool) {
+            const pluginInfo = this.plugins.get(pluginName);
+            // 如果插件不存在或已禁用，清理其定时任务
+            if (!pluginInfo || !pluginInfo.setup.enable) {
+                this.cleanupPluginCronTasks(pluginName);
+            }
+        }
+    }
+    
+    /**
+     * 清理所有定时任务
+     */
+    private cleanupAllCronTasks(): void {
+        for (const [pluginName] of this.cronTaskPool) {
+            this.cleanupPluginCronTasks(pluginName);
+        }
+        this.cronTaskPool.clear();
+    }
+    
+    /**
+     * 清理指定插件的定时任务
+     */
+    private cleanupPluginCronTasks(pluginName: string): void {
+        const tasks = this.cronTaskPool.get(pluginName);
+        if (tasks) {
+            for (const task of tasks) {
+                if (task && typeof task.stop === 'function') {
+                    try {
+                        task.stop();
+                    } catch (error) {
+                        log.error(`[-]停止插件 ${pluginName} 的定时任务失败: ${error}`);
+                    }
+                }
+            }
+            this.cronTaskPool.delete(pluginName);
+            log.debug(`[*]已清理插件 ${pluginName} 的定时任务`);
         }
     }
 }

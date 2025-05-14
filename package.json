@@ -35,6 +35,8 @@
     "node-napcat-ts": "^0.4.0",
     "p-queue": "^8.1.0",
     "puppeteer": "^24.7.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "resend": "^4.4.0",
     "sharp": "^0.34.1",
     "systeminformation": "^5.25.11"
