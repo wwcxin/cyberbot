@@ -107,6 +107,7 @@ export class Bot {
     private errorCount: number = 0;
     private readonly MAX_ERRORS_BEFORE_RECONNECT = 5;
     private readonly ERROR_RESET_INTERVAL = 60000; // 1分钟重置错误计数
+    private isShuttingDown: boolean = false; // 添加关闭状态标志
     
 
     constructor() {
@@ -142,6 +143,66 @@ export class Bot {
         setInterval(() => {
             this.errorCount = 0;
         }, this.ERROR_RESET_INTERVAL);
+
+        // 添加进程退出处理
+        this.setupProcessHandlers();
+    }
+
+    private setupProcessHandlers(): void {
+        // 处理 SIGINT (Ctrl+C)
+        process.on('SIGINT', async () => {
+            if (this.isShuttingDown) {
+                log.warn('[*]正在强制退出...');
+                process.exit(1);
+            }
+            
+            this.isShuttingDown = true;
+            log.info('[*]正在优雅关闭...');
+            
+            try {
+                await this.stop();
+                log.info('[*]已安全关闭，正在退出...');
+                process.exit(0);
+            } catch (error) {
+                log.error(`[-]关闭时发生错误: ${error}`);
+                process.exit(1);
+            }
+        });
+
+        // 处理 SIGTERM
+        process.on('SIGTERM', async () => {
+            if (this.isShuttingDown) {
+                process.exit(1);
+            }
+            
+            this.isShuttingDown = true;
+            log.info('[*]收到终止信号，正在关闭...');
+            
+            try {
+                await this.stop();
+                log.info('[*]已安全关闭，正在退出...');
+                process.exit(0);
+            } catch (error) {
+                log.error(`[-]关闭时发生错误: ${error}`);
+                process.exit(1);
+            }
+        });
+
+        // 处理未捕获的异常
+        process.on('uncaughtException', (error) => {
+            log.error(`[-]未捕获的异常: ${error}`);
+            if (!this.isShuttingDown) {
+                this.handleError(error, 'uncaughtException');
+            }
+        });
+
+        // 处理未处理的 Promise 拒绝
+        process.on('unhandledRejection', (reason, promise) => {
+            log.error(`[-]未处理的 Promise 拒绝: ${reason}`);
+            if (!this.isShuttingDown) {
+                this.handleError(reason, 'unhandledRejection');
+            }
+        });
     }
 
     private initHeartbeatCheck() {
@@ -318,22 +379,55 @@ export class Bot {
         });
     }
 
-    // 添加停止方法，在系统关闭时调用
+    // 修改 stop 方法，确保资源正确清理
     async stop() {
-        // 清理心跳检查定时器
-        if (this.heartbeatTimeout) {
-            clearInterval(this.heartbeatTimeout);
-            this.heartbeatTimeout = null;
+        if (this.isShuttingDown) {
+            return;
         }
         
-        // 断开连接
+        this.isShuttingDown = true;
+        log.info('[*]开始停止服务...');
+
         try {
-            await this.bot.disconnect();
+            // 1. 停止心跳检查
+            if (this.heartbeatTimeout) {
+                clearInterval(this.heartbeatTimeout);
+                this.heartbeatTimeout = null;
+            }
+
+            // 2. 停止所有插件
+            if (this.pluginManager) {
+                const plugins = this.pluginManager.getPlugins();
+                for (const [pluginName] of plugins) {
+                    try {
+                        await this.pluginManager.offPlugin(pluginName);
+                    } catch (error) {
+                        log.error(`[-]停止插件 ${pluginName} 时发生错误: ${error}`);
+                    }
+                }
+            }
+
+            // 3. 断开连接
+            if (this.bot) {
+                try {
+                    await this.bot.disconnect();
+                } catch (error) {
+                    log.error(`[-]断开连接时发生错误: ${error}`);
+                }
+            }
+
+            // 4. 保存错误日志
+            try {
+                ErrorHandler.saveErrorLogsSynchronously();
+            } catch (error) {
+                log.error(`[-]保存错误日志时发生错误: ${error}`);
+            }
+
+            log.info('[*]服务已完全停止');
         } catch (error) {
-            log.error(`[-]断开连接时发生错误: ${error}`);
+            log.error(`[-]停止服务时发生错误: ${error}`);
+            throw error;
         }
-        
-        log.info('[*]系统已停止，资源已清理');
     }
 }
 
@@ -907,18 +1001,39 @@ class ErrorHandler {
     /**
      * 同步保存错误日志到文件（进程退出时使用）
      */
-    private static saveErrorLogsSynchronously(): void {
+    static saveErrorLogsSynchronously(): void {
+        if (!this.isInitialized) {
+            return;
+        }
+
         try {
             // 确保日志目录存在
             const logDir = join(process.cwd(), "logs");
             if (!existsSync(logDir)) {
                 mkdirSync(logDir, { recursive: true });
             }
-            
-            const data = JSON.stringify(this.errorLogs);
+
+            // 清理过期日志
+            this.cleanOldLogs();
+
+            // 同步写入文件
+            const data = JSON.stringify(this.errorLogs, null, 2);
             writeFileSync(this.ERROR_LOGS_FILE, data, 'utf8');
+            
+            // 清空内存中的日志
+            this.errorLogs = [];
+            this.pendingSave = false;
+            
+            log.info('[*]错误日志已同步保存');
         } catch (error) {
             console.error('Error saving error logs synchronously:', error);
+            // 在退出时，我们仍然尝试写入，即使可能失败
+            try {
+                const data = JSON.stringify(this.errorLogs);
+                writeFileSync(this.ERROR_LOGS_FILE, data, 'utf8');
+            } catch (e) {
+                console.error('Final attempt to save error logs failed:', e);
+            }
         }
     }
     
@@ -931,20 +1046,27 @@ class ErrorHandler {
     
     /**
      * 清理旧的错误日志
-     * @param maxAge 最大保留时间(毫秒)
      */
     static cleanOldLogs(maxAge: number = this.MAX_LOG_AGE_DAYS * 24 * 60 * 60 * 1000): void {
+        if (!this.isInitialized) {
+            return;
+        }
+
         try {
             const now = Date.now();
             const oldSize = this.errorLogs.length;
             
-            this.errorLogs = this.errorLogs.filter(log => (now - log.timestamp) < maxAge);
+            // 过滤掉过期的日志
+            this.errorLogs = this.errorLogs.filter(log => 
+                log && 
+                typeof log === 'object' && 
+                typeof log.timestamp === 'number' &&
+                (now - log.timestamp) < maxAge
+            );
             
             const removedCount = oldSize - this.errorLogs.length;
             if (removedCount > 0) {
                 log.info(`[*]已清理 ${removedCount} 条过期错误日志`);
-                // 仅当有日志被删除时才保存
-                this.saveErrorLogs().catch(e => console.error('Failed to save logs after cleaning:', e));
             }
         } catch (error) {
             console.error('Error cleaning old logs:', error);
