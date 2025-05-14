@@ -1464,8 +1464,16 @@ export class PluginManager {
             getText: (e: AllHandlers['message']) => {
                 try {
                     if (!Array.isArray(e.message)) return "";
+                    
+                    // 检查消息是否包含图片
+                    const hasImage = e.message.some(item => item.type === "image");
+                    if (hasImage) {
+                        return "[图片]"; // 如果消息包含图片，返回特殊标记
+                    }
+                    
+                    // 处理文本消息
                     const textObj = e.message.find(item => item.type === "text");
-                    return textObj?.data?.text.trim() || ""; // 返回 "%%" 或其他文本
+                    return textObj?.data?.text.trim() || "";
                 } catch (error) {
                     log.error('提取纯文本内容时发生错误:', error);
                     return "";
