@@ -123,6 +123,7 @@ export class Bot {
         this.bot = new NCWebsocket({
             "baseUrl": this.config.baseUrl,
             "accessToken": this.config.accessToken,
+            "throwPromise": this.config.throwPromise,
             "reconnection": {
                 "enable": this.config.reconnection?.enable ?? true,
                 "attempts": this.config.reconnection?.attempts ?? 10,
@@ -220,10 +221,25 @@ export class Bot {
         try {
             log.info("[*]开始重新连接...");
             
-            // 断开现有连接
-            await this.bot.disconnect();
+            // 1. 清理心跳检查
+            if (this.heartbeatTimeout) {
+                clearInterval(this.heartbeatTimeout);
+                this.heartbeatTimeout = null;
+            }
             
-            // 重新创建连接
+            // 2. 重置心跳时间
+            this.lastHeartbeatTime = 0;
+            
+            // 3. 确保完全断开现有连接
+            try {
+                await this.bot.disconnect();
+                // 等待连接完全关闭
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (disconnectError) {
+                log.warn(`[!]断开旧连接时发生错误: ${disconnectError}`);
+            }
+            
+            // 4. 重新创建连接
             this.bot = new NCWebsocket({
                 "baseUrl": this.config.baseUrl,
                 "accessToken": this.config.accessToken,
@@ -234,13 +250,16 @@ export class Bot {
                 }
             }, this.config.reconnection?.debug ?? false);
             
-            // 重新注册事件处理器
+            // 5. 重新注册事件处理器
             this.registerEventHandlers();
             
-            // 重新连接
+            // 6. 重新初始化心跳检查
+            this.initHeartbeatCheck();
+            
+            // 7. 重新连接
             await this.bot.connect();
             
-            // 重置错误计数
+            // 8. 重置错误计数
             this.errorCount = 0;
             
             log.info("[+]重新连接成功");
