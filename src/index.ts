@@ -221,51 +221,32 @@ export class Bot {
         try {
             log.info("[*]开始重新连接...");
             
-            // 1. 清理心跳检查
-            if (this.heartbeatTimeout) {
-                clearInterval(this.heartbeatTimeout);
-                this.heartbeatTimeout = null;
-            }
-            
-            // 2. 重置心跳时间
-            this.lastHeartbeatTime = 0;
-            
-            // 3. 确保完全断开现有连接
-            try {
-                await this.bot.disconnect();
-                // 等待连接完全关闭
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            } catch (disconnectError) {
-                log.warn(`[!]断开旧连接时发生错误: ${disconnectError}`);
-            }
-            
-            // 4. 重新创建连接
+            // 1. 断开旧连接并清理事件监听器
+            this.removeEventHandlers();
+            this.bot.disconnect();
+
+            // 2. 创建新连接实例
             this.bot = new NCWebsocket({
-                "baseUrl": this.config.baseUrl,
-                "accessToken": this.config.accessToken,
-                "reconnection": {
-                    "enable": this.config.reconnection?.enable ?? true,
-                    "attempts": this.config.reconnection?.attempts ?? 10,
-                    "delay": this.config.reconnection?.delay ?? 5000
+                baseUrl: this.config.baseUrl,
+                accessToken: this.config.accessToken,
+                throwPromise: this.config.throwPromise,
+                reconnection: {
+                    enable: this.config.reconnection?.enable ?? true,
+                    attempts: this.config.reconnection?.attempts ?? 10,
+                    delay: this.config.reconnection?.delay ?? 5000
                 }
             }, this.config.reconnection?.debug ?? false);
             
-            // 5. 重新注册事件处理器
+            // 3. 注册事件处理器
             this.registerEventHandlers();
             
-            // 6. 重新初始化心跳检查
-            this.initHeartbeatCheck();
-            
-            // 7. 重新连接
+            // 4. 重新连接
             await this.bot.connect();
             
-            // 8. 重置错误计数
             this.errorCount = 0;
-            
             log.info("[+]重新连接成功");
         } catch (error) {
             this.handleError(error, "重新连接");
-            // 如果重连失败，继续尝试
             setTimeout(() => this.reconnect(), 5000);
         }
     }
@@ -282,69 +263,83 @@ export class Bot {
         }
     }
 
-    private registerEventHandlers() {
-        // 基础连接事件
-        this.bot.on("socket.open", (ctx) => {
-            log.info("[*]开始连接: " + this.config.baseUrl);
+    // 添加事件处理函数引用
+    private onSocketOpen = (ctx: any) => {
+        log.info("[*]开始连接: " + this.config.baseUrl);
+        this.lastHeartbeatTime = Date.now();
+    };
+
+    private onSocketError = (ctx: any) => {
+        this.handleError(ctx.error_type, "WebSocket连接");
+        this.lastHeartbeatTime = 0;
+    };
+
+    private onSocketClose = (ctx: any) => {
+        this.handleError(`连接关闭，代码: ${ctx.code}`, "WebSocket");
+        this.lastHeartbeatTime = 0;
+    };
+
+    private onLifecycleConnect = (ctx: any) => {
+        if (ctx.sub_type == "connect") {
+            log.info(`[+]连接成功: ${this.config.baseUrl}`);
+            log.info(logo);
             this.lastHeartbeatTime = Date.now();
-        });
+        }
+    };
 
-        this.bot.on("socket.error", (ctx) => {
-            this.handleError(ctx.error_type, "WebSocket连接");
-            this.lastHeartbeatTime = 0;
+    private onHeartbeat = (ctx: any) => {
+        this.lastHeartbeatTime = Date.now();
+        log.info(`[*]心跳包♥ (${new Date().toLocaleTimeString()})`);
+        
+        this.bot.get_login_info().catch(error => {
+            this.handleError(error, "心跳检查");
+            this.reconnect();
         });
+    };
 
-        this.bot.on("socket.close", (ctx) => {
-            this.handleError(`连接关闭，代码: ${ctx.code}`, "WebSocket");
-            this.lastHeartbeatTime = 0;
-        });
+    private onMessage = (ctx: any) => {
+        if (ctx.message_type == "group") {
+            log.info(`[*]群(${ctx.group_id}) ${ctx.sender.nickname}(${ctx.sender.user_id}): ${ctx.raw_message}`);
+        } else if (ctx.message_type == "private") {
+            log.info(`[*]私聊(${ctx.sender.user_id}) ${ctx.sender.nickname}: ${ctx.raw_message}`);
+        }
+    };
+
+    private onApiFailure = (ctx: any) => {
+        this.handleError(`状态: ${ctx.status}, 消息: ${ctx.message}`, "API调用");
+    };
+
+    private registerEventHandlers() {
+        // 先移除所有旧监听器
+        this.removeEventHandlers();
+
+        // 基础连接事件
+        this.bot.on("socket.open", this.onSocketOpen);
+        this.bot.on("socket.error", this.onSocketError);
+        this.bot.on("socket.close", this.onSocketClose);
 
         // 生命周期事件
-        this.bot.on("meta_event.lifecycle", (ctx) => {
-            try {
-                if (ctx.sub_type == "connect") {
-                    log.info(`[+]连接成功: ${this.config.baseUrl}`);
-                    log.info(logo);
-                    this.lastHeartbeatTime = Date.now();
-                }
-            } catch (error) {
-                this.handleError(error, "生命周期事件");
-            }
-        });
+        this.bot.on("meta_event.lifecycle", this.onLifecycleConnect);
 
         // 心跳事件
-        this.bot.on("meta_event.heartbeat", (ctx) => {
-            try {
-                this.lastHeartbeatTime = Date.now();
-                log.info(`[*]心跳包♥ (${new Date().toLocaleTimeString()})`);
-                
-                // 定期检查连接状态
-                this.bot.get_login_info().catch(error => {
-                    this.handleError(error, "心跳检查");
-                    this.reconnect();
-                });
-            } catch (error) {
-                this.handleError(error, "心跳事件");
-            }
-        });
+        this.bot.on("meta_event.heartbeat", this.onHeartbeat);
 
         // 消息事件
-        this.bot.on("message", (ctx) => {
-            try {
-                if (ctx.message_type == "group") {
-                    log.info(`[*]群(${ctx.group_id}) ${ctx.sender.nickname}(${ctx.sender.user_id}): ${ctx.raw_message}`);
-                } else if (ctx.message_type == "private") {
-                    log.info(`[*]私聊(${ctx.sender.user_id}) ${ctx.sender.nickname}: ${ctx.raw_message}`);
-                }
-            } catch (error) {
-                this.handleError(error, "消息处理");
-            }
-        });
+        this.bot.on("message", this.onMessage);
 
-        // API 错误事件
-        this.bot.on("api.response.failure", (ctx) => {
-            this.handleError(`状态: ${ctx.status}, 消息: ${ctx.message}`, "API调用");
-        });
+        // API错误事件
+        this.bot.on("api.response.failure", this.onApiFailure);
+    }
+
+    private removeEventHandlers() {
+        // 移除所有事件监听器
+        this.bot.off("socket.open", this.onSocketOpen);
+        this.bot.off("socket.error", this.onSocketError);
+        this.bot.off("socket.close", this.onSocketClose);
+        this.bot.off("meta_event.lifecycle", this.onLifecycleConnect);
+        this.bot.off("meta_event.heartbeat", this.onHeartbeat);
+        this.bot.off("message", this.onMessage);
+        this.bot.off("api.response.failure", this.onApiFailure);
     }
 
     async start() {

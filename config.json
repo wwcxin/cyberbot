@@ -18,10 +18,10 @@
       "cmds"
     ],
     "user": [
-      "demo",
       "mail",
       "ops",
-      "阿里百炼"
+      "阿里百炼",
+      "demo"
     ]
   },
   "logger": {
