@@ -18,11 +18,6 @@ export default definePlugin({
             const hasRight = ctx.hasRight(e)
 
             /**
-             * 消息中的提及到的图片链接
-             */
-            const imgUrl = await ctx.getMentionedImageUrl(e);
-
-            /**
              * 消息中的文字部分
              */
             const text = ctx.getText(e);
@@ -33,11 +28,6 @@ export default definePlugin({
             const MentionedUserId = ctx.getMessageAt(e);
 
             /**
-             * 检查机器人是否是群主或管理员
-             */
-            const botHasGroupPower = await ctx.isGroupAdmin(e);
-
-            /**
              * 检查权限和群身份
              * @param needGroupPower 是否需要群主/管理员权限
              * @param needOwner 是否需要群主权限
@@ -45,13 +35,18 @@ export default definePlugin({
              */
             const checkPermission = async (needGroupPower = true, needOwner = false) => {
                 if (!hasRight) return false;
-                if (needOwner && !botHasGroupPower) return false;
-                if (needGroupPower && !botHasGroupPower) return false;
+                
+                // 只在需要时检查机器人权限
+                if (needGroupPower || needOwner) {
+                    const botHasGroupPower = await ctx.isGroupAdmin(e);
+                    if (needOwner && !botHasGroupPower) return false;
+                    if (needGroupPower && !botHasGroupPower) return false;
+                }
+
                 if (MentionedUserId && needGroupPower) {
-                    // 检查是否可以操作目标用户
+                    // 只在需要时获取目标用户信息
                     const targetMember = await ctx.getGroupMemberInfo(e.group_id, MentionedUserId, false);
                     if (!targetMember) return false;
-                    // 比较权限：bot不能操作权限相同或更高的用户
                     if (targetMember.role === 'owner' || targetMember.role === 'admin') return false;
                 }
                 return true;
@@ -169,6 +164,8 @@ export default definePlugin({
 
             if (text.startsWith('#改头像')) {
                 if (!hasRight) return;
+                // 只在需要时获取图片URL
+                const imgUrl = await ctx.getMentionedImageUrl(e);
                 if (!imgUrl) {
                     await e.reply('？图片被你吃了');
                     return;
@@ -337,6 +334,8 @@ export default definePlugin({
             // 改群头像功能
             if (text.startsWith('#改群头像')) {
                 if (!await checkPermission(true)) return; // 需要管理员权限
+                // 只在需要时获取图片URL
+                const imgUrl = await ctx.getMentionedImageUrl(e);
                 if (!imgUrl) {
                     await e.reply('？图片被你吃了');
                     return;
@@ -427,6 +426,8 @@ export default definePlugin({
 
             // 获取引用消息中的图片
             if (text === '#取图片') {
+                // 只在需要时获取图片URL
+                const imgUrl = await ctx.getMentionedImageUrl(e);
                 if (!imgUrl) {
                     await e.reply('？图片被你吃了');
                     return;
