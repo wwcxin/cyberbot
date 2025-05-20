@@ -6,6 +6,12 @@ export default definePlugin({
   description: "插件描述",
   setup: (ctx) => {
     ctx.handle("message", async (e) => {
+
+      if (e.raw_message === '#断开连接') {
+        ctx.bot.disconnect();
+        e.reply('已断开连接', true)
+      }
+
       // log.info(`[+]收到消息: ${JSON.stringify(ctx.getImageLink(e))}`);
       // 收到 hello 消息时回复 world
       if (e.raw_message === 'hello') {
