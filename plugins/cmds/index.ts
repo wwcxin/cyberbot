@@ -141,6 +141,11 @@ const commands: { [key: string]: CommandHandler } = {
                 // 平台信息
                 const platform = os.platform() === 'win32' ? 'Windows' : os.platform();
                 const arch = os.arch();
+                // CPU信息
+                const cpus = os.cpus();
+                const cpuModel = cpus[0].model;
+                // 计算CPU使用率
+                const cpuUsage = await getCpuUsage();
                 // 运行时间信息
                 const uptimeSeconds = process.uptime();
                 const days = Math.floor(uptimeSeconds / (24 * 3600));
@@ -164,6 +169,7 @@ const commands: { [key: string]: CommandHandler } = {
                     `🔷 ${ver_info.app_name}-${ver_info.protocol_version}-${ver_info.app_version}\n` +
                     `🚀 bot占用-${(memoryUsage.rss / 1024 / 1024).toFixed(2)} MB-${((memoryUsage.rss / totalMemory) * 100).toFixed(2)}%\n` +
                     `💻 ${platform}-${arch}-node${nodeVersion.slice(1)}\n` +
+                    `🖥️ ${cpuModel}-${cpuUsage.toFixed(1)}%\n` +
                     `⚡ ${((totalMemory - freeMemory) / 1024 / 1024 / 1024).toFixed(2)} GB/${(totalMemory / 1024 / 1024 / 1024).toFixed(2)} GB-${(((totalMemory - freeMemory) / totalMemory) * 100).toFixed(2)}%\n` +
                     `💾 ${used.toFixed(0)} GB/${total.toFixed(0)} GB-${((used/total) * 100).toFixed(2)}%`
                 );
@@ -433,4 +439,41 @@ const getDiskInfo = async (path = process.cwd()) => {
       console.error("获取磁盘信息失败:", err);
       return { total: 100, used: 50, available: 50 };
     }
+};
+
+// 在文件末尾添加 CPU 使用率计算函数
+const getCpuUsage = async (): Promise<number> => {
+    const cpus = os.cpus();
+    let totalIdle = 0;
+    let totalTick = 0;
+
+    // 获取初始 CPU 时间
+    for (const cpu of cpus) {
+        for (const type in cpu.times) {
+            totalTick += cpu.times[type as keyof typeof cpu.times];
+        }
+        totalIdle += cpu.times.idle;
+    }
+
+    // 等待 100ms
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // 获取新的 CPU 时间
+    const newCpus = os.cpus();
+    let newTotalIdle = 0;
+    let newTotalTick = 0;
+
+    for (const cpu of newCpus) {
+        for (const type in cpu.times) {
+            newTotalTick += cpu.times[type as keyof typeof cpu.times];
+        }
+        newTotalIdle += cpu.times.idle;
+    }
+
+    // 计算使用率
+    const idleDiff = newTotalIdle - totalIdle;
+    const tickDiff = newTotalTick - totalTick;
+    const usage = 100 - (100 * idleDiff / tickDiff);
+
+    return usage;
 };
