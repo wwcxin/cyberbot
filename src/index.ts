@@ -237,14 +237,51 @@ export class Bot {
                 }
             }, this.config.reconnection?.debug ?? false);
             
-            // 3. 注册事件处理器
+            // 3. 注册基础事件处理器
             this.registerEventHandlers();
             
             // 4. 重新连接
             await this.bot.connect();
             
+            // 5. 重新注册所有已启用插件的事件处理器
+            if (this.pluginManager) {
+                const plugins = this.pluginManager.getPlugins();
+                for (const [pluginName, pluginInfo] of plugins) {
+                    if (pluginInfo.setup.enable) {
+                        log.info(`[*]重新注册插件 ${pluginName} 的事件处理器`);
+                        // 重新注册事件监听器
+                        if (pluginInfo.setup.listeners?.length > 0) {
+                            for (const listener of pluginInfo.setup.listeners) {
+                                try {
+                                    if (listener && typeof listener.fn === 'function') {
+                                        this.bot.on(listener.event, listener.fn);
+                                        log.debug(`[+]插件${pluginName}重新注册事件: ${listener.event}`);
+                                    }
+                                } catch (err) {
+                                    log.error(`[-]插件${pluginName}重新注册事件${listener.event}失败: ${err}`);
+                                }
+                            }
+                        }
+                        
+                        // 重新启动定时任务
+                        if (pluginInfo.setup.cron?.length > 0) {
+                            for (const job of pluginInfo.setup.cron) {
+                                if (job && typeof job.start === 'function') {
+                                    try {
+                                        job.start();
+                                        log.debug(`[+]插件${pluginName}重新启动定时任务`);
+                                    } catch (err) {
+                                        log.error(`[-]插件${pluginName}重新启动定时任务失败: ${err}`);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
             this.errorCount = 0;
-            log.info("[+]重新连接成功");
+            log.info("[+]重新连接成功，所有插件事件处理器已重新注册");
         } catch (error) {
             this.handleError(error, "重新连接");
             setTimeout(() => this.reconnect(), 5000);
