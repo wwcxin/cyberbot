@@ -102,8 +102,8 @@ export class Bot {
     private plugins: {} | null;
     private lastHeartbeatTime: number = 0;
     private heartbeatTimeout: NodeJS.Timeout | null = null;
-    private readonly HEARTBEAT_TIMEOUT = 30000; // 30秒无心跳则判定为断开
-    private readonly HEARTBEAT_CHECK_INTERVAL = 10000; // 每10秒检查一次心跳状态
+    private readonly HEARTBEAT_TIMEOUT = 60000; // 60秒无心跳则判定为断开
+    private readonly HEARTBEAT_CHECK_INTERVAL = 30000; // 每30秒检查一次心跳状态
     private errorCount: number = 0;
     private readonly MAX_ERRORS_BEFORE_RECONNECT = 5;
     private readonly ERROR_RESET_INTERVAL = 60000; // 1分钟重置错误计数
@@ -223,6 +223,27 @@ export class Bot {
             
             // 1. 断开旧连接并清理事件监听器
             this.removeEventHandlers();
+            
+            // 清理所有插件的事件监听器
+            if (this.pluginManager) {
+                const plugins = this.pluginManager.getPlugins();
+                for (const [pluginName, pluginInfo] of plugins) {
+                    if (pluginInfo.setup.listeners?.length > 0) {
+                        for (const listener of pluginInfo.setup.listeners) {
+                            try {
+                                if (listener && typeof listener.fn === 'function') {
+                                    this.bot.off(listener.event, listener.fn);
+                                    log.debug(`[+]清理插件${pluginName}的事件监听器: ${listener.event}`);
+                                }
+                            } catch (err) {
+                                log.error(`[-]清理插件${pluginName}的事件监听器失败: ${err}`);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 断开连接
             this.bot.disconnect();
 
             // 2. 创建新连接实例
@@ -249,8 +270,17 @@ export class Bot {
                 for (const [pluginName, pluginInfo] of plugins) {
                     if (pluginInfo.setup.enable) {
                         log.info(`[*]重新注册插件 ${pluginName} 的事件处理器`);
-                        // 重新注册事件监听器
+                        
+                        // 确保清理旧的事件监听器
                         if (pluginInfo.setup.listeners?.length > 0) {
+                            // 先移除所有旧的事件监听器
+                            for (const listener of pluginInfo.setup.listeners) {
+                                if (listener && typeof listener.fn === 'function') {
+                                    this.bot.off(listener.event, listener.fn);
+                                }
+                            }
+                            
+                            // 然后重新注册事件监听器
                             for (const listener of pluginInfo.setup.listeners) {
                                 try {
                                     if (listener && typeof listener.fn === 'function') {
@@ -265,6 +295,18 @@ export class Bot {
                         
                         // 重新启动定时任务
                         if (pluginInfo.setup.cron?.length > 0) {
+                            // 先停止所有定时任务
+                            for (const job of pluginInfo.setup.cron) {
+                                if (job && typeof job.stop === 'function') {
+                                    try {
+                                        job.stop();
+                                    } catch (err) {
+                                        log.error(`[-]停止插件${pluginName}的定时任务失败: ${err}`);
+                                    }
+                                }
+                            }
+                            
+                            // 然后重新启动定时任务
                             for (const job of pluginInfo.setup.cron) {
                                 if (job && typeof job.start === 'function') {
                                     try {
