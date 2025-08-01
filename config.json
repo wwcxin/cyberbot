@@ -1,5 +1,5 @@
 {
-  "baseUrl": "ws://192.168.10.102:4001",
+  "baseUrl": "ws://192.168.10.200:3001",
   "accessToken": "",
   "throwPromise": false,
   "reconnection": {
@@ -20,8 +20,8 @@
     "user": [
       "mail",
       "ops",
-      "阿里百炼",
-      "demo"
+      "科目一",
+      "Bilidown"
     ]
   },
   "logger": {

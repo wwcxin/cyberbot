@@ -4,6 +4,8 @@ npm-debug.log
 yarn-error.log
 yarn-debug.log
 plugins/mail/
+plugins/凹凸曼豪车租赁/
+plugins/阿里百炼/
 
 # 环境变量和密钥
 .env
