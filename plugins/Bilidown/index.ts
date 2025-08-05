@@ -40,23 +40,17 @@ export default definePlugin({
       fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
     }
     
-    // 检测B站视频链接
+    // 检测B站视频链接 - 简化逻辑，直接匹配所有可能的B站链接
     const extractBilibiliUrl = (message: string): string | null => {
-      const bilibiliPatterns = [
-        /https?:\/\/(?:www\.)?bilibili\.com\/video\/(BV[a-zA-Z0-9]+)(?:\/|\?|$)/i,
-        /https?:\/\/b23\.tv\/([a-zA-Z0-9]+)/i
-      ];
+      // 匹配所有可能的B站视频链接格式
+      const bilibiliPattern = /https?:\/\/(?:www\.|m\.)?(?:bilibili\.com\/video\/|b23\.tv\/)([^\s]+)/i;
+      const match = message.match(bilibiliPattern);
       
-      for (const pattern of bilibiliPatterns) {
-        const match = message.match(pattern);
-        if (match) {
-          if (pattern.source.includes('b23.tv')) {
-            return `https://www.bilibili.com/video/${match[1]}`;
-          } else {
-            return `https://www.bilibili.com/video/${match[1]}`;
-          }
-        }
+      if (match) {
+        // 直接返回完整的原始链接，让API自己处理
+        return match[0];
       }
+      
       return null;
     };
     
