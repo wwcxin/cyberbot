@@ -58,7 +58,7 @@ export default definePlugin({
     const createDownloadTask = async (url: string): Promise<DownloadResponse> => {
         const response = await http.post(`${BILIDOWN_API_BASE}/api/downloadVideoByURL`, {
           url: url,
-        format: 80
+        format: 0
         });
         return response.data;
     };
